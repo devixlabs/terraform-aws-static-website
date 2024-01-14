@@ -4,7 +4,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 3.34.0"
+      version = "~> 3.76"
     }
   }
 }
@@ -82,36 +82,48 @@ data "aws_acm_certificate" "wildcard_website" {
 
 ## S3
 # Creates bucket to store logs
-resource "aws_s3_bucket" "website_logs" {
-  bucket = "${var.website-domain-main}-logs"
-  acl    = "log-delivery-write"
+# resource "aws_s3_bucket" "website_logs" {
+#   bucket = "${var.website-domain-main}-logs"
 
-  # Comment the following line if you are uncomfortable with Terraform destroying the bucket even if this one is not empty
-  force_destroy = true
+#   # Comment the following line if you are uncomfortable with Terraform destroying the bucket even if this one is not empty
+#   force_destroy = true
 
 
-  tags = merge(var.tags, {
-    ManagedBy = "terraform"
-    Changed   = formatdate("YYYY-MM-DD hh:mm ZZZ", timestamp())
-  })
+#   tags = merge(var.tags, {
+#     ManagedBy = "terraform"
+#     Changed   = formatdate("YYYY-MM-DD hh:mm ZZZ", timestamp())
+#   })
 
-  lifecycle {
-    ignore_changes = [tags["Changed"]]
-  }
-}
+#   lifecycle {
+#     ignore_changes = [tags["Changed"]]
+#   }
+# }
+
+# resource "aws_s3_bucket_acl" "logging_bucket_acl" {
+#   bucket = aws_s3_bucket.website_logs.id
+#   acl    = "log-delivery-write"
+# }
+
+# resource "aws_s3_bucket_ownership_controls" "logging_disallow_acls" {
+#   bucket = aws_s3_bucket.website_logs.id
+
+#   rule {
+#     object_ownership = "ObjectWriter"
+#   }
+# }
 
 # Creates bucket to store the static website
 resource "aws_s3_bucket" "website_root" {
   bucket = "${var.website-domain-main}-root"
-  acl    = "public-read"
+  # acl    = "public-read"
 
   # Comment the following line if you are uncomfortable with Terraform destroying the bucket even if not empty
   force_destroy = true
 
-  logging {
-    target_bucket = aws_s3_bucket.website_logs.bucket
-    target_prefix = "${var.website-domain-main}/"
-  }
+  # logging {
+  #   target_bucket = aws_s3_bucket.website_logs.bucket
+  #   target_prefix = "${var.website-domain-main}/"
+  # }
 
   website {
     index_document = "index.html"
@@ -124,20 +136,40 @@ resource "aws_s3_bucket" "website_root" {
   })
 
   lifecycle {
-    ignore_changes = [tags["Changed"]]
+    ignore_changes = [tags["Changed"], grant]
   }
+}
+
+resource "aws_s3_bucket_acl" "website_root_bucket_acl" {
+  bucket = aws_s3_bucket.website_root.id
+  acl    = local.acl
+}
+
+# Some manual intervention is needed to get tf apply to succeed. Mostly is described here -> https://github.com/hashicorp/terraform-provider-aws/issues/26164#issuecomment-1260995693
+# STOP!!! Should I apply this resource?
+resource "aws_s3_bucket_ownership_controls" "website_root" {
+  bucket = aws_s3_bucket.website_root.id
+
+  rule {
+    object_ownership = local.ownership
+  }
+}
+
+locals {
+  acl = "public-read" # Might have to return this to private and set ownership below to null (or just adjust manually through AWS web console)
+  ownership = "ObjectWriter"
 }
 
 # Creates bucket for the website handling the redirection (if required), e.g. from https://www.example.com to https://example.com
 resource "aws_s3_bucket" "website_redirect" {
   bucket        = "${var.website-domain-main}-redirect"
-  acl           = "public-read"
+  # acl           = "public-read"
   force_destroy = true
 
-  logging {
-    target_bucket = aws_s3_bucket.website_logs.bucket
-    target_prefix = "${var.website-domain-main}-redirect/"
-  }
+  # logging {
+  #   target_bucket = aws_s3_bucket.website_logs.bucket
+  #   target_prefix = "${var.website-domain-main}-redirect/"
+  # }
 
   website {
     redirect_all_requests_to = "https://${var.website-domain-main}"
@@ -149,9 +181,22 @@ resource "aws_s3_bucket" "website_redirect" {
   })
 
   lifecycle {
-    ignore_changes = [tags["Changed"]]
+    ignore_changes = [tags["Changed"], grant]
   }
 }
+
+resource "aws_s3_bucket_acl" "website_redirect_bucket_acl" {
+  bucket = aws_s3_bucket.website_redirect.id
+  acl    = local.acl
+}
+
+# resource "aws_s3_bucket_ownership_controls" "website_redirect" {
+#   bucket = aws_s3_bucket.website_redirect.id
+
+#   rule {
+#     object_ownership = local.ownership
+#   }
+# }
 
 ## CloudFront
 # Creates the CloudFront distribution to serve the static website
@@ -176,10 +221,10 @@ resource "aws_cloudfront_distribution" "website_cdn_root" {
 
   default_root_object = "index.html"
 
-  logging_config {
-    bucket = aws_s3_bucket.website_logs.bucket_domain_name
-    prefix = "${var.website-domain-main}/"
-  }
+  # logging_config {
+  #   bucket = aws_s3_bucket.website_logs.bucket_domain_name
+  #   prefix = "${var.website-domain-main}/"
+  # }
 
   default_cache_behavior {
     allowed_methods  = ["GET", "HEAD", "OPTIONS"]
@@ -299,10 +344,10 @@ resource "aws_cloudfront_distribution" "website_cdn_redirect" {
     }
   }
 
-  logging_config {
-    bucket = aws_s3_bucket.website_logs.bucket_domain_name
-    prefix = "${var.website-domain-main}-redirect/"
-  }
+  # logging_config {
+  #   bucket = aws_s3_bucket.website_logs.bucket_domain_name
+  #   prefix = "${var.website-domain-main}-redirect/"
+  # }
 
   default_cache_behavior {
     allowed_methods  = ["GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT", "DELETE"]
