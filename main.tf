@@ -80,6 +80,9 @@ data "aws_acm_certificate" "wildcard_website" {
   most_recent = true
 }
 
+#######JER
+#######JER Some manual intervention is needed to get tf apply to succeed. Mostly is described here -> https://github.com/hashicorp/terraform-provider-aws/issues/26164#issuecomment-1260995693
+#######JER
 ## S3
 # Creates bucket to store logs
 # resource "aws_s3_bucket" "website_logs" {
@@ -145,8 +148,6 @@ resource "aws_s3_bucket_acl" "website_root_bucket_acl" {
   acl    = local.acl
 }
 
-# Some manual intervention is needed to get tf apply to succeed. Mostly is described here -> https://github.com/hashicorp/terraform-provider-aws/issues/26164#issuecomment-1260995693
-# STOP!!! Should I apply this resource?
 resource "aws_s3_bucket_ownership_controls" "website_root" {
   bucket = aws_s3_bucket.website_root.id
 
@@ -156,13 +157,13 @@ resource "aws_s3_bucket_ownership_controls" "website_root" {
 }
 
 locals {
-  acl = "public-read" # Might have to return this to private and set ownership below to null (or just adjust manually through AWS web console)
+  acl       = "public-read" # Might have to return this to private and set ownership below to null (or just adjust manually through AWS web console)
   ownership = "ObjectWriter"
 }
 
 # Creates bucket for the website handling the redirection (if required), e.g. from https://www.example.com to https://example.com
 resource "aws_s3_bucket" "website_redirect" {
-  bucket        = "${var.website-domain-main}-redirect"
+  bucket = "${var.website-domain-main}-redirect"
   # acl           = "public-read"
   force_destroy = true
 
@@ -190,13 +191,13 @@ resource "aws_s3_bucket_acl" "website_redirect_bucket_acl" {
   acl    = local.acl
 }
 
-# resource "aws_s3_bucket_ownership_controls" "website_redirect" {
-#   bucket = aws_s3_bucket.website_redirect.id
+resource "aws_s3_bucket_ownership_controls" "website_redirect" {
+  bucket = aws_s3_bucket.website_redirect.id
 
-#   rule {
-#     object_ownership = local.ownership
-#   }
-# }
+  rule {
+    object_ownership = local.ownership
+  }
+}
 
 ## CloudFront
 # Creates the CloudFront distribution to serve the static website
